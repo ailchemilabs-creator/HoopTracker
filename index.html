@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The LCHEMIST Training Tracker</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        slate: { 800: '#1e293b', 900: '#0f172a' },
+                        cyan: { 400: '#22d3ee', 500: '#06b6d4' }
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <!-- React & ReactDOM (Development for better error tracking, switch to production for live) -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    
+    <!-- Babel for in-browser JSX compilation -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <!-- Canvas Confetti for Gamification -->
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+
+    <style>
+        body { 
+            background-color: #0f172a; 
+            color: #f8fafc; 
+            font-family: system-ui, -apple-system, sans-serif; 
+        }
+        /* Sleek Terminal/Dark UI Scrollbars */
+        ::-webkit-scrollbar { height: 6px; width: 6px; }
+        ::-webkit-scrollbar-track { background: #1e293b; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #475569; }
+    </style>
+</head>
+<body class="antialiased">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useMemo } = React;
+
+        // --- Inline SVGs ---
+        const IconVideo = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="23 7 16 12 23 17 23 7"></polygon><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>;
+        const IconPlus = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>;
+        const IconX = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>;
+        const IconActivity = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>;
+        const IconTrophy = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"></path><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"></path><path d="M4 22h16"></path><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"></path><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"></path><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"></path></svg>;
+
+        // --- Default Data Initialization ---
+        const DEFAULT_CATEGORIES = ["Handles", "Shooting", "Finishing", "Vertical Jumping", "Strength Training"];
+        
+        const DEFAULT_DRILLS = [
+            { id: 'w1', category: 'Handles', name: 'Ball slaps', recommendedReps: 10, videoUrl: '', history: [] },
+            { id: 'w2', category: 'Handles', name: 'Fingertip taps', recommendedReps: 5, videoUrl: '', history: [] },
+            { id: 'w3', category: 'Handles', name: 'Around the head', recommendedReps: 5, videoUrl: '', history: [] },
+            { id: 'w4', category: 'Handles', name: 'Around the waist', recommendedReps: 5, videoUrl: '', history: [] },
+            { id: 'w5', category: 'Handles', name: 'Around both legs', recommendedReps: 5, videoUrl: '', history: [] },
+            { id: 'w6', category: 'Handles', name: 'Around one leg', recommendedReps: 5, videoUrl: '', history: [] },
+            { id: 'w7', category: 'Handles', name: 'Figure 8s', recommendedReps: 5, videoUrl: '', history: [] },
+            { id: 'w8', category: 'Handles', name: 'One leg, two legs', recommendedReps: 5, videoUrl: '', history: [] },
+            { id: 'd1', category: 'Handles', name: 'Low fingertip dribbles', recommendedReps: 20, videoUrl: '', history: [] },
+            { id: 'd2', category: 'Handles', name: 'Hard pounds', recommendedReps: 10, videoUrl: '', history: [] },
+            { id: 'd3', category: 'Handles', name: 'One-leg dribbles (one arm)', recommendedReps: 5, videoUrl: '', history: [] },
+            { id: 'd4', category: 'Handles', name: 'Dribble figure 8s', recommendedReps: 5, videoUrl: '', history: [] },
+            { id: 'd5', category: 'Handles', name: 'Windshield wipers', recommendedReps: 5, videoUrl: '', history: [] },
+            { id: 'd6', category: 'Handles', name: 'Walking the dog', recommendedReps: 5, videoUrl: '', history: [] },
+            { id: 'd7', category: 'Handles', name: 'Dog wipers', recommendedReps: 5, videoUrl: '', history: [] },
+            { id: 'd8', category: 'Handles', name: 'Crossovers', recommendedReps: 10, videoUrl: '', history: [] },
+            { id: 'd9', category: 'Handles', name: 'Between-the-legs', recommendedReps: 10, videoUrl: '', history: [] },
+            { id: 'd10', category: 'Handles', name: 'Figure 8 dribbles', recommendedReps: 10, videoUrl: '', history: [] },
+            { id: 'd11', category: 'Handles', name: 'Behind the back', recommendedReps: 10, videoUrl: '', history: [] },
+            { id: 'd12', category: 'Handles', name: 'Between-the-legs crossover', recommendedReps: 10, videoUrl: '', history: [] },
+            { id: 'd13', category: 'Handles', name: 'Between-the-legs behind-the-back', recommendedReps: 10, videoUrl: '', history: [] },
+        ];
+
+        // --- Helper: YouTube ID Extractor ---
+        const getYouTubeId = (url) => {
+            if (!url) return null;
+            const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+            const match = url.match(regExp);
+            return (match && match[2].length === 11) ? match[2] : null;
+        };
+
+        // --- Helper: Gamification ---
+        const fireConfetti = () => {
+            if (window.confetti) {
+                window.confetti({
+                    particleCount: 100,
+                    spread: 70,
+                    origin: { y: 0.6 },
+                    colors: ['#22d3ee', '#06b6d4', '#f8fafc']
+                });
+            }
+        };
+
+        function App() {
+            const [categories, setCategories] = useState([]);
+            const [drills, setDrills] = useState([]);
+            const [activeCategory, setActiveCategory] = useState("Handles");
+            const [selectedDrill, setSelectedDrill] = useState(null);
+            const [isLoaded, setIsLoaded] = useState(false);
+
+            // Inputs for new items
+            const [newTabName, setNewTabName] = useState("");
+            const [newDrillName, setNewDrillName] = useState("");
+            const [newDrillReps, setNewDrillReps] = useState("");
+
+            // Load Data on Mount
+            useEffect(() => {
+                const savedCategories = JSON.parse(localStorage.getItem('lchemist_categories'));
+                const savedDrills = JSON.parse(localStorage.getItem('lchemist_drills'));
+                
+                setCategories(savedCategories && savedCategories.length > 0 ? savedCategories : DEFAULT_CATEGORIES);
+                setDrills(savedDrills && savedDrills.length > 0 ? savedDrills : DEFAULT_DRILLS);
+                setIsLoaded(true);
+            }, []);
+
+            // Save Data on Change
+            useEffect(() => {
+                if (isLoaded) {
+                    localStorage.setItem('lchemist_categories', JSON.stringify(categories));
+                    localStorage.setItem('lchemist_drills', JSON.stringify(drills));
+                }
+            }, [categories, drills, isLoaded]);
+
+            // Add Custom Category
+            const handleAddCategory = (e) => {
+                e.preventDefault();
+                if (newTabName.trim() && !categories.includes(newTabName.trim())) {
+                    setCategories([...categories, newTabName.trim()]);
+                    setActiveCategory(newTabName.trim());
+                    setNewTabName("");
+                }
+            };
+
+            // Add Custom Drill
+            const handleAddDrill = (e) => {
+                e.preventDefault();
+                if (newDrillName.trim()) {
+                    const newDrill = {
+                        id: 'custom_' + Date.now(),
+                        category: activeCategory,
+                        name: newDrillName.trim(),
+                        recommendedReps: parseInt(newDrillReps) || 10,
+                        videoUrl: '',
+                        history: []
+                    };
+                    setDrills([...drills, newDrill]);
+                    setNewDrillName("");
+                    setNewDrillReps("");
+                }
+            };
+
+            // Update Drill (Video Link or Reps)
+            const updateDrill = (updatedDrill) => {
+                setDrills(drills.map(d => d.id === updatedDrill.id ? updatedDrill : d));
+                setSelectedDrill(updatedDrill);
+            };
+
+            // Log Session
+            const logSession = (drillId, repsDone) => {
+                const now = new Date().toISOString();
+                const updatedDrills = drills.map(d => {
+                    if (d.id === drillId) {
+                        return {
+                            ...d,
+                            history: [...d.history, { date: now, reps: parseInt(repsDone) }]
+                        };
+                    }
+                    return d;
+                });
+                setDrills(updatedDrills);
+                
+                // Update selected drill state to immediately reflect stats in modal
+                const updatedSelected = updatedDrills.find(d => d.id === drillId);
+                setSelectedDrill(updatedSelected);
+                
+                fireConfetti();
+            };
+
+            const activeDrills = drills.filter(d => d.category === activeCategory);
+
+            if (!isLoaded) return <div className="min-h-screen bg-slate-900 text-slate-100 flex items-center justify-center">Loading...</div>;
+
+            return (
+                <div className="min-h-screen bg-slate-900 text-slate-100 p-4 md:p-8 font-sans">
+                    <div className="max-w-5xl mx-auto">
+                        
+                        <header className="mb-8 border-b border-slate-800 pb-6 flex justify-between items-end">
+                            <div>
+                                <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 to-blue-500 mb-2">
+                                    The [AI] LCHEMIST Tracker
+                                </h1>
+                                <p className="text-slate-400">Zero-based athletic conditioning & skill logging.</p>
+                            </div>
+                            <div className="hidden md:flex items-center space-x-2 text-cyan-400 bg-slate-800/50 px-4 py-2 rounded-lg border border-slate-700">
+                                <IconTrophy />
+                                <span className="font-semibold">{drills.reduce((acc, d) => acc + d.history.length, 0)} Sessions Completed</span>
+                            </div>
+                        </header>
+
+                        {/* Custom Tab Bar */}
+                        <div className="flex overflow-x-auto pb-4 mb-6 space-x-2 scrollbar-hide">
+                            {categories.map(cat => (
+                                <button
+                                    key={cat}
+                                    onClick={() => setActiveCategory(cat)}
+                                    className={`whitespace-nowrap px-5 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 border ${
+                                        activeCategory === cat 
+                                        ? 'bg-cyan-500/10 border-cyan-500 text-cyan-400 shadow-[0_0_15px_rgba(6,182,212,0.15)]' 
+                                        : 'bg-slate-800/50 border-slate-700 text-slate-400 hover:bg-slate-800 hover:text-slate-200'
+                                    }`}
+                                >
+                                    {cat}
+                                </button>
+                            ))}
+                            
+                            {/* Add Category Form */}
+                            <form onSubmit={handleAddCategory} className="flex items-center space-x-2 ml-2 pl-4 border-l border-slate-800">
+                                <input
+                                    type="text"
+                                    placeholder="New Tab..."
+                                    value={newTabName}
+                                    onChange={(e) => setNewTabName(e.target.value)}
+                                    className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 w-32"
+                                />
+                                <button type="submit" className="p-2 bg-slate-800 hover:bg-slate-700 rounded-lg text-cyan-400 transition-colors">
+                                    <IconPlus />
+                                </button>
+                            </form>
+                        </div>
+
+                        {/* Drills Grid */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
+                            {activeDrills.map(drill => (
+                                <div 
+                                    key={drill.id} 
+                                    onClick={() => setSelectedDrill(drill)}
+                                    className="bg-slate-800/40 border border-slate-700/50 rounded-xl p-5 cursor-pointer hover:border-cyan-500/50 hover:bg-slate-800/80 transition-all duration-300 group relative overflow-hidden"
+                                >
+                                    <div className="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-cyan-400 to-blue-600 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                                    
+                                    <div className="flex justify-between items-start mb-3">
+                                        <h3 className="font-semibold text-lg text-slate-200 group-hover:text-cyan-400 transition-colors pr-4">{drill.name}</h3>
+                                        {drill.videoUrl && <span className="text-slate-500"><IconVideo /></span>}
+                                    </div>
+                                    
+                                    <div className="flex items-center space-x-4 text-sm">
+                                        <div className="flex flex-col">
+                                            <span className="text-slate-500 text-xs">Target</span>
+                                            <span className="text-slate-300 font-medium">{drill.recommendedReps} reps</span>
+                                        </div>
+                                        <div className="flex flex-col border-l border-slate-700 pl-4">
+                                            <span className="text-slate-500 text-xs">Sessions</span>
+                                            <span className="text-cyan-400 font-medium">{drill.history.length}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+
+                        {/* Add Custom Drill Form */}
+                        <div className="bg-slate-800/30 border border-slate-800 rounded-xl p-6 mb-12">
+                            <h3 className="text-lg font-semibold mb-4 text-slate-300 flex items-center">
+                                <IconPlus /> <span className="ml-2">Add Custom Regime to {activeCategory}</span>
+                            </h3>
+                            <form onSubmit={handleAddDrill} className="flex flex-col md:flex-row gap-4">
+                                <input
+                                    type="text"
+                                    placeholder="Workout/Drill Name"
+                                    value={newDrillName}
+                                    onChange={(e) => setNewDrillName(e.target.value)}
+                                    className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500"
+                                    required
+                                />
+                                <input
+                                    type="number"
+                                    placeholder="Recommended Reps"
+                                    value={newDrillReps}
+                                    onChange={(e) => setNewDrillReps(e.target.value)}
+                                    className="w-full md:w-48 bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500"
+                                    required
+                                />
+                                <button type="submit" className="bg-cyan-500 hover:bg-cyan-400 text-slate-900 font-semibold px-6 py-2.5 rounded-lg transition-colors shadow-lg shadow-cyan-500/20">
+                                    Create Profile
+                                </button>
+                            </form>
+                        </div>
+                        
+                    </div>
+
+                    {/* Drill Profile Modal */}
+                    {selectedDrill && (
+                        <DrillModal 
+                            drill={selectedDrill} 
+                            onClose={() => setSelectedDrill(null)} 
+                            onUpdate={updateDrill}
+                            onLogSession={logSession}
+                        />
+                    )}
+                </div>
+            );
+        }
+
+        // --- Drill Modal Component ---
+        function DrillModal({ drill, onClose, onUpdate, onLogSession }) {
+            const [videoInput, setVideoInput] = useState(drill.videoUrl || '');
+            const [isEditingVideo, setIsEditingVideo] = useState(!drill.videoUrl);
+            const [logReps, setLogReps] = useState(drill.recommendedReps);
+            const [isEditingReps, setIsEditingReps] = useState(false);
+            const [editRepsInput, setEditRepsInput] = useState(drill.recommendedReps);
+
+            const videoId = getYouTubeId(drill.videoUrl);
+            const totalRepsLogged = drill.history.reduce((sum, h) => sum + h.reps, 0);
+
+            const handleSaveVideo = () => {
+                onUpdate({ ...drill, videoUrl: videoInput });
+                setIsEditingVideo(false);
+            };
+
+            const handleSaveRecommendedReps = () => {
+                onUpdate({ ...drill, recommendedReps: parseInt(editRepsInput) || 10 });
+                setIsEditingReps(false);
+            };
+
+            const handleLog = (e) => {
+                e.preventDefault();
+                if (logReps > 0) {
+                    onLogSession(drill.id, logReps);
+                }
+            };
+
+            return (
+                <div className="fixed inset-0 bg-slate-900/90 backdrop-blur-sm z-50 flex justify-center items-end md:items-center p-4">
+                    <div className="bg-slate-800 w-full max-w-lg rounded-t-3xl md:rounded-2xl shadow-2xl border border-slate-700 flex flex-col max-h-[90vh]">
+                        
+                        {/* Header */}
+                        <div className="flex justify-between items-center p-6 border-b border-slate-700">
+                            <div>
+                                <h2 className="text-2xl font-bold text-slate-100">{drill.name}</h2>
+                                <span className="text-cyan-500 text-sm font-medium">{drill.category} Profile</span>
+                            </div>
+                            <button onClick={onClose} className="p-2 hover:bg-slate-700 rounded-full text-slate-400 transition-colors">
+                                <IconX />
+                            </button>
+                        </div>
+
+                        <div className="p-6 overflow-y-auto custom-scrollbar flex-1 space-y-8">
+                            
+                            {/* Stats Tally Area */}
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="bg-slate-900 rounded-xl p-4 border border-slate-700/50">
+                                    <span className="text-slate-400 text-sm block mb-1">Total Sessions</span>
+                                    <span className="text-3xl font-bold text-slate-100">{drill.history.length}</span>
+                                </div>
+                                <div className="bg-slate-900 rounded-xl p-4 border border-slate-700/50">
+                                    <span className="text-slate-400 text-sm block mb-1">Total Reps Logged</span>
+                                    <span className="text-3xl font-bold text-cyan-400">{totalRepsLogged}</span>
+                                </div>
+                            </div>
+
+                            {/* Inline Video Player */}
+                            <div>
+                                <div className="flex justify-between items-center mb-3">
+                                    <h3 className="text-slate-300 font-semibold flex items-center">
+                                        <IconVideo /> <span className="ml-2">Inline Training Video</span>
+                                    </h3>
+                                    {!isEditingVideo && drill.videoUrl && (
+                                        <button onClick={() => setIsEditingVideo(true)} className="text-sm text-cyan-500 hover:text-cyan-400">Edit Link</button>
+                                    )}
+                                </div>
+
+                                {isEditingVideo ? (
+                                    <div className="flex space-x-2">
+                                        <input 
+                                            type="text"
+                                            placeholder="Paste YouTube Link..."
+                                            value={videoInput}
+                                            onChange={(e) => setVideoInput(e.target.value)}
+                                            className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:border-cyan-500 focus:outline-none"
+                                        />
+                                        <button onClick={handleSaveVideo} className="bg-slate-700 hover:bg-slate-600 px-4 py-2 rounded-lg text-sm font-medium transition-colors">Save</button>
+                                    </div>
+                                ) : videoId ? (
+                                    <div className="relative pt-[56.25%] rounded-xl overflow-hidden border border-slate-700 bg-slate-900 shadow-inner">
+                                        <iframe
+                                            className="absolute inset-0 w-full h-full"
+                                            src={`https://www.youtube.com/embed/${videoId}?rel=0`}
+                                            title="YouTube video player"
+                                            frameBorder="0"
+                                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                                            allowFullScreen
+                                        ></iframe>
+                                    </div>
+                                ) : (
+                                    <div className="bg-slate-900/50 border border-dashed border-slate-700 rounded-xl p-8 text-center">
+                                        <p className="text-slate-500 text-sm">No video linked for this drill.</p>
+                                        <button onClick={() => setIsEditingVideo(true)} className="mt-2 text-cyan-500 text-sm font-medium hover:underline">Add YouTube Link</button>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Log Session Action */}
+                            <div className="bg-slate-900 rounded-xl p-5 border border-slate-700 shadow-lg relative overflow-hidden">
+                                <div className="absolute top-0 left-0 w-1 h-full bg-cyan-500"></div>
+                                <div className="flex justify-between items-center mb-4">
+                                    <h3 className="font-bold text-lg flex items-center">
+                                        <IconActivity /> <span className="ml-2">Log Session</span>
+                                    </h3>
+                                    
+                                    {isEditingReps ? (
+                                        <div className="flex items-center space-x-2">
+                                            <input 
+                                                type="number" 
+                                                value={editRepsInput}
+                                                onChange={(e) => setEditRepsInput(e.target.value)}
+                                                className="w-16 bg-slate-800 border border-slate-600 rounded px-2 py-1 text-sm focus:outline-none focus:border-cyan-500"
+                                            />
+                                            <button onClick={handleSaveRecommendedReps} className="text-cyan-500 hover:text-cyan-400"><IconCheck /></button>
+                                        </div>
+                                    ) : (
+                                        <button onClick={() => setIsEditingReps(true)} className="text-slate-400 text-sm hover:text-slate-300">
+                                            Target: {drill.recommendedReps} reps
+                                        </button>
+                                    )}
+                                </div>
+                                
+                                <form onSubmit={handleLog} className="flex space-x-3">
+                                    <div className="flex-1 relative">
+                                        <input
+                                            type="number"
+                                            value={logReps}
+                                            onChange={(e) => setLogReps(e.target.value)}
+                                            className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-3 text-lg font-bold text-center focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500"
+                                            required
+                                        />
+                                        <span className="absolute right-4 top-3.5 text-slate-500 text-sm font-medium">Reps</span>
+                                    </div>
+                                    <button type="submit" className="bg-cyan-500 hover:bg-cyan-400 text-slate-900 font-bold px-8 py-3 rounded-lg transition-colors shadow-lg shadow-cyan-500/20">
+                                        Log It
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
