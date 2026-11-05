@@ -1,894 +1,569 @@
 ```react
-import React, { useState, useEffect, useMemo } from 'react';
-import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
-import { getFirestore, collection, addDoc, onSnapshot, doc, setDoc, updateDoc } from 'firebase/firestore';
-import { 
-  Trophy, Activity, Calendar as CalendarIcon, Flame, 
-  Target, Dumbbell, CheckCircle2, TrendingUp, ChevronRight, 
-  CircleDashed, LayoutDashboard, Plus, Edit2, X, Check, Star,
-  Maximize2, Youtube, Link as LinkIcon
-} from 'lucide-react';
-import { 
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer 
-} from 'recharts';
-
-// --- Environment & Firebase Setup ---
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'hoop-tracker-default';
-const firebaseConfig = typeof __firebase_config !== 'undefined' 
-  ? JSON.parse(__firebase_config) 
-  : { /* Fallback mock config if needed for local testing outside platform */ };
-
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
-
-// --- Default Data ---
-const DEFAULT_CATEGORIES = [
-  { id: 'handles', name: 'Handles', icon: <CircleDashed size={20} /> },
-  { id: 'shooting', name: 'Shooting', icon: <Target size={20} /> },
-  { id: 'finishing', name: 'Finishing', icon: <ChevronRight size={20} /> },
-  { id: 'vertical', name: 'Vertical Jumping', icon: <TrendingUp size={20} /> },
-  { id: 'strength', name: 'Strength Training', icon: <Dumbbell size={20} /> },
-];
-
-const DEFAULT_DRILLS = [
-  { id: 'h1', category: 'Handles', name: 'Pound Dribbles', recommendedReps: 100 },
-  { id: 'h2', category: 'Handles', name: 'Crossovers', recommendedReps: 50 },
-  { id: 'h3', category: 'Handles', name: 'Between the Legs', recommendedReps: 50 },
-  { id: 'h4', category: 'Handles', name: 'Behind the Back', recommendedReps: 50 },
-  { id: 'h5', category: 'Handles', name: 'Right Hand Low Pounds', recommendedReps: 50 },
-  { id: 'h6', category: 'Handles', name: 'Left Hand Low Pounds', recommendedReps: 50 },
-  { id: 'h7', category: 'Handles', name: 'In and Out Dribbles', recommendedReps: 50 },
-  { id: 'h8', category: 'Handles', name: 'Side to Side V-Dribbles', recommendedReps: 50 },
-  { id: 'h9', category: 'Handles', name: 'Front to Back V-Dribbles', recommendedReps: 50 },
-  { id: 'h10', category: 'Handles', name: 'Figure 8 Dribbles', recommendedReps: 20 },
-  { id: 'h11', category: 'Handles', name: 'Ball Slaps', recommendedReps: 10 },
-  { id: 'h12', category: 'Handles', name: 'Fingertip Taps', recommendedReps: 5 },
-  { id: 'h13', category: 'Handles', name: 'Around the Head', recommendedReps: 5 },
-  { id: 'h14', category: 'Handles', name: 'Around the Waist', recommendedReps: 5 },
-  { id: 'h15', category: 'Handles', name: 'Around Both Legs', recommendedReps: 5 },
-  { id: 'h16', category: 'Handles', name: 'Around One Leg', recommendedReps: 5 },
-  { id: 'h17', category: 'Handles', name: 'Figure 8s (No Dribble)', recommendedReps: 5 },
-  { id: 'h18', category: 'Handles', name: 'One Leg, Two Legs', recommendedReps: 5 },
-  { id: 'h19', category: 'Handles', name: 'Low Fingertip Dribbles', recommendedReps: 20 },
-  { id: 'h20', category: 'Handles', name: 'Hard Pounds', recommendedReps: 10 },
-  { id: 'h21', category: 'Handles', name: 'One-leg Dribbles (One arm)', recommendedReps: 5 },
-  { id: 'h22', category: 'Handles', name: 'Dribble Figure 8s', recommendedReps: 5 },
-  { id: 'h23', category: 'Handles', name: 'Windshield Wipers', recommendedReps: 5 },
-  { id: 'h24', category: 'Handles', name: 'Walking the Dog', recommendedReps: 5 },
-  { id: 'h25', category: 'Handles', name: 'Dog Wipers', recommendedReps: 5 },
-  { id: 'h26', category: 'Handles', name: 'Between-the-legs Crossover', recommendedReps: 10 },
-  { id: 'h27', category: 'Handles', name: 'Between-the-legs Behind-the-back', recommendedReps: 10 },
-  { id: 's1', category: 'Shooting', name: 'Form Shooting', recommendedReps: 50 },
-  { id: 's2', category: 'Shooting', name: 'Spot Up Threes', recommendedReps: 100 },
-  { id: 's3', category: 'Shooting', name: 'Free Throws', recommendedReps: 50 },
-  { id: 'f1', category: 'Finishing', name: 'Mikan Drill', recommendedReps: 50 },
-  { id: 'f2', category: 'Finishing', name: 'Floaters', recommendedReps: 30 },
-  { id: 'f3', category: 'Finishing', name: 'Reverse Layups', recommendedReps: 20 },
-  { id: 'v1', category: 'Vertical Jumping', name: 'Box Jumps', recommendedReps: 20 },
-  { id: 'v2', category: 'Vertical Jumping', name: 'Depth Jumps', recommendedReps: 15 },
-  { id: 'st1', category: 'Strength Training', name: 'Pushups', recommendedReps: 50 },
-  { id: 'st2', category: 'Strength Training', name: 'Squats', recommendedReps: 50 },
-  { id: 'st3', category: 'Strength Training', name: 'Lunges', recommendedReps: 40 },
-];
-
-// --- Components ---
-
-const DrillCard = ({ drill, onLog, onUpdate, onOpenProfile }) => {
-  const [reps, setReps] = useState(drill.recommendedReps);
-  const [justLogged, setJustLogged] = useState(false);
-  const [isEditingReps, setIsEditingReps] = useState(false);
-  const [editRepsVal, setEditRepsVal] = useState(drill.recommendedReps);
-
-  useEffect(() => {
-    setReps(drill.recommendedReps);
-    setEditRepsVal(drill.recommendedReps);
-  }, [drill.recommendedReps]);
-
-  const handleLog = () => {
-    if (reps > 0) {
-      onLog(drill, reps);
-      setJustLogged(true);
-      setTimeout(() => setJustLogged(false), 2000);
-    }
-  };
-
-  return (
-    <div className="bg-slate-800/80 backdrop-blur-sm rounded-xl p-4 border border-slate-700/50 shadow-sm hover:shadow-lg relative overflow-hidden transition-all duration-300 hover:border-orange-500/50 hover:-translate-y-1 group flex flex-col justify-between">
-      <div className="flex justify-between items-start mb-3">
-        <div>
-          <h3 
-            className="font-bold text-base text-slate-100 group-hover:text-orange-400 transition-colors leading-tight cursor-pointer flex items-center gap-1.5"
-            onClick={() => onOpenProfile(drill)}
-          >
-            {drill.name}
-            <Maximize2 size={14} className="opacity-0 group-hover:opacity-100 text-orange-500 transition-opacity" />
-          </h3>
-          
-          {isEditingReps ? (
-            <div className="flex items-center gap-1 mt-1">
-              <span className="text-xs text-slate-400">Rec:</span>
-              <input 
-                type="number" 
-                value={editRepsVal}
-                onChange={e => setEditRepsVal(parseInt(e.target.value) || 0)}
-                className="w-12 bg-slate-900 border border-slate-600 rounded text-xs text-white px-1 py-0.5 focus:outline-none focus:border-orange-500"
-                autoFocus
-              />
-              <button onClick={() => { onUpdate(drill, { recommendedReps: editRepsVal }); setIsEditingReps(false); }} className="text-emerald-500 hover:bg-emerald-500/20 p-0.5 rounded transition-colors"><Check size={14} /></button>
-              <button onClick={() => setIsEditingReps(false)} className="text-red-500 hover:bg-red-500/20 p-0.5 rounded transition-colors"><X size={14} /></button>
-            </div>
-          ) : (
-            <div className="flex items-center gap-1 group/edit mt-0.5">
-              <p className="text-xs text-slate-400 font-medium">Rec: {drill.recommendedReps} reps</p>
-              <button onClick={() => setIsEditingReps(true)} className="opacity-0 group-hover/edit:opacity-100 text-slate-400 hover:text-orange-400 transition-opacity">
-                <Edit2 size={12} />
-              </button>
-            </div>
-          )}
-        </div>
-        {justLogged ? (
-          <span className="text-orange-500 animate-bounce drop-shadow-[0_0_5px_rgba(249,115,22,0.5)]">
-            <Flame size={20} />
-          </span>
-        ) : drill.videoUrl ? (
-          <span className="text-red-500/70" title="Has Video Link">
-            <Youtube size={16} />
-          </span>
-        ) : null}
-      </div>
-      
-      <div className="flex items-center gap-2 mt-auto pt-2">
-        <div className="flex-1 relative">
-          <input
-            type="number"
-            min="1"
-            value={reps}
-            onChange={(e) => setReps(parseInt(e.target.value) || 0)}
-            className="w-full bg-slate-900/60 border border-slate-700/50 text-slate-100 rounded-lg py-2 px-3 focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500 transition-all text-sm font-bold text-center"
-          />
-        </div>
-        <button
-          onClick={handleLog}
-          disabled={justLogged}
-          className={`px-5 py-2 rounded-lg font-bold text-sm transition-all duration-300 flex items-center justify-center min-w-[80px] ${
-            justLogged 
-              ? 'bg-emerald-500 text-white shadow-[0_0_10px_rgba(16,185,129,0.3)]' 
-              : 'bg-orange-500 hover:bg-orange-400 text-white shadow-[0_0_10px_rgba(249,115,22,0.3)] hover:shadow-[0_0_15px_rgba(249,115,22,0.5)] active:scale-95'
-          }`}
-        >
-          {justLogged ? <CheckCircle2 size={18} /> : 'LOG'}
-        </button>
-      </div>
-    </div>
-  );
-};
-
-const AddDrillCard = ({ category, onAdd }) => {
-  const [isAdding, setIsAdding] = useState(false);
-  const [name, setName] = useState('');
-  const [reps, setReps] = useState(50);
-
-  if (!isAdding) {
-    return (
-      <button 
-        onClick={() => setIsAdding(true)}
-        className="bg-slate-900/40 backdrop-blur-sm rounded-xl p-4 border border-slate-700/50 border-dashed hover:border-orange-500/50 hover:bg-slate-800/40 transition-all duration-300 flex flex-col items-center justify-center min-h-[140px] text-slate-400 hover:text-orange-400 group"
-      >
-        <div className="bg-slate-800 p-2 rounded-full mb-2 group-hover:scale-110 transition-transform">
-          <Plus size={24} />
-        </div>
-        <span className="font-bold text-sm">Add Custom Drill</span>
-      </button>
-    );
-  }
-
-  return (
-    <div className="bg-slate-800/80 backdrop-blur-sm rounded-xl p-4 border border-orange-500/50 shadow-sm relative flex flex-col justify-between min-h-[140px] animate-in fade-in zoom-in-95 duration-200">
-      <div className="space-y-2">
-        <input
-          type="text"
-          placeholder="Drill Name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          className="w-full bg-slate-900/60 border border-slate-700/50 text-slate-100 rounded-lg py-1.5 px-3 focus:outline-none focus:border-orange-500 text-sm font-bold placeholder:text-slate-500"
-          autoFocus
-        />
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-slate-400 font-medium whitespace-nowrap">Rec Reps:</span>
-          <input
-            type="number"
-            min="1"
-            value={reps}
-            onChange={(e) => setReps(parseInt(e.target.value) || 0)}
-            className="w-full bg-slate-900/60 border border-slate-700/50 text-slate-100 rounded-lg py-1.5 px-3 focus:outline-none focus:border-orange-500 text-sm font-bold"
-          />
-        </div>
-      </div>
-      
-      <div className="flex items-center gap-2 mt-3 pt-2">
-        <button
-          onClick={() => setIsAdding(false)}
-          className="flex-1 px-3 py-1.5 rounded-lg font-bold text-xs bg-slate-700 hover:bg-slate-600 text-white transition-colors"
-        >
-          Cancel
-        </button>
-        <button
-          onClick={() => {
-            if (name.trim() && reps > 0) {
-              onAdd(category, name.trim(), reps);
-              setIsAdding(false);
-              setName('');
-              setReps(50);
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HoopTracker</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            bg: '#0a0f1d',
+                            card: '#1a2235',
+                            input: '#0f172a',
+                            orange: '#ff6b00',
+                            orangeDark: '#e55a00',
+                            orangeGradientStart: '#ff7e27',
+                            orangeGradientEnd: '#ff5d00'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['system-ui', '-apple-system', 'sans-serif'],
+                    }
+                }
             }
-          }}
-          className="flex-1 px-3 py-1.5 rounded-lg font-bold text-xs bg-orange-500 hover:bg-orange-400 text-white transition-colors"
-        >
-          Save
-        </button>
-      </div>
-    </div>
-  );
-};
-
-const Dashboard = ({ logs, allDrills, categories, onLogDrill, onAddDrill, onUpdateDrill, onAddCategory, onOpenDrill }) => {
-  const [activeCategory, setActiveCategory] = useState('Handles');
-  const [isAddingCategory, setIsAddingCategory] = useState(false);
-  const [newCategoryName, setNewCategoryName] = useState('');
-  
-  // Calculate today's stats
-  const todayStats = useMemo(() => {
-    const today = new Date().toISOString().split('T')[0];
-    const todayLogs = logs.filter(log => log.date === today);
-    const totalReps = todayLogs.reduce((sum, log) => sum + log.reps, 0);
-    return {
-      sessions: todayLogs.length,
-      totalReps: totalReps
-    };
-  }, [logs]);
-
-  const activeDrills = DEFAULT_DRILLS.filter(d => d.category === activeCategory);
-
-  return (
-    <div className="space-y-5 animate-in fade-in duration-500">
-      {/* Today's Summary Card */}
-      <div className="bg-gradient-to-br from-orange-600 to-orange-500 rounded-2xl p-5 md:p-6 shadow-lg shadow-orange-500/20 text-white relative overflow-hidden">
-        <div className="absolute top-0 right-0 -mt-6 -mr-6 opacity-10 pointer-events-none">
-          <Target size={180} />
-        </div>
-        <div className="flex items-center justify-between relative z-10">
-          <div>
-            <h2 className="text-xl md:text-2xl font-black italic tracking-wider mb-0.5">TODAY'S GRIND</h2>
-            <p className="text-orange-100/80 text-sm font-medium">Keep pushing your limits.</p>
-          </div>
-          <Flame size={40} className="text-orange-200 opacity-90 drop-shadow-md" />
-        </div>
-        <div className="grid grid-cols-2 gap-3 mt-5 relative z-10">
-          <div className="bg-black/10 rounded-xl p-3 md:p-4 backdrop-blur-md border border-white/10 transition-transform duration-300 hover:scale-[1.02]">
-            <div className="text-3xl md:text-4xl font-black tracking-tight">{todayStats.sessions}</div>
-            <div className="text-xs md:text-sm font-semibold uppercase tracking-wider text-orange-100 mt-1">Drills Done</div>
-          </div>
-          <div className="bg-black/10 rounded-xl p-3 md:p-4 backdrop-blur-md border border-white/10 transition-transform duration-300 hover:scale-[1.02]">
-            <div className="text-3xl md:text-4xl font-black tracking-tight">{todayStats.totalReps}</div>
-            <div className="text-xs md:text-sm font-semibold uppercase tracking-wider text-orange-100 mt-1">Total Reps</div>
-          </div>
-        </div>
-      </div>
-
-      {/* Category Selection */}
-      <div className="flex overflow-x-auto pb-1 gap-2 hide-scrollbar snap-x items-center">
-        {categories.map(cat => (
-          <button
-            key={cat.id}
-            onClick={() => setActiveCategory(cat.name)}
-            className={`flex items-center gap-1.5 whitespace-nowrap px-4 py-2 md:px-5 md:py-2.5 rounded-full text-sm font-bold transition-all duration-300 snap-start ${
-              activeCategory === cat.name
-                ? 'bg-orange-500 text-white shadow-md shadow-orange-500/20 scale-105'
-                : 'bg-slate-800/80 text-slate-400 hover:bg-slate-700 hover:text-slate-200 border border-slate-700/50'
-            }`}
-          >
-            {React.cloneElement(cat.icon, { size: 16 })}
-            {cat.name}
-          </button>
-        ))}
-
-        {isAddingCategory ? (
-          <div className="flex items-center gap-1.5 whitespace-nowrap px-2 py-1.5 bg-slate-800 border border-orange-500 rounded-full snap-start animate-in fade-in zoom-in duration-200">
-            <input 
-               type="text" 
-               value={newCategoryName} 
-               onChange={e => setNewCategoryName(e.target.value)}
-               className="bg-slate-900 border border-slate-700 text-sm text-white px-3 py-1 w-32 outline-none rounded-full focus:border-orange-500 transition-colors"
-               placeholder="Tab name..."
-               autoFocus
-               onKeyDown={(e) => {
-                 if (e.key === 'Enter' && newCategoryName.trim()) {
-                   onAddCategory(newCategoryName.trim());
-                   setActiveCategory(newCategoryName.trim());
-                   setIsAddingCategory(false);
-                   setNewCategoryName('');
-                 }
-               }}
-            />
-            <button 
-              onClick={() => { 
-                if(newCategoryName.trim()) { 
-                  onAddCategory(newCategoryName.trim()); 
-                  setActiveCategory(newCategoryName.trim()); 
-                } 
-                setIsAddingCategory(false); 
-                setNewCategoryName(''); 
-              }} 
-              className="text-emerald-500 hover:bg-emerald-500/20 p-1 rounded-full transition-colors"
-            >
-              <Check size={16}/>
-            </button>
-            <button 
-              onClick={() => { setIsAddingCategory(false); setNewCategoryName(''); }} 
-              className="text-red-500 hover:bg-red-500/20 p-1 rounded-full transition-colors"
-            >
-              <X size={16}/>
-            </button>
-          </div>
-        ) : (
-          <button 
-            onClick={() => setIsAddingCategory(true)} 
-            className="flex items-center gap-1.5 whitespace-nowrap px-4 py-2 md:py-2.5 rounded-full text-sm font-bold transition-all duration-300 snap-start bg-slate-800/40 text-slate-400 hover:bg-slate-700 hover:text-slate-200 border border-slate-700/50 border-dashed hover:border-orange-500/50"
-          >
-            <Plus size={16} /> New Tab
-          </button>
-        )}
-      </div>
-
-      {/* Drills Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4">
-        {allDrills.filter(d => d.category === activeCategory).map(drill => (
-          <DrillCard key={drill.id} drill={drill} onLog={onLogDrill} onUpdate={onUpdateDrill} onOpenProfile={onOpenDrill} />
-        ))}
-        <AddDrillCard category={activeCategory} onAdd={onAddDrill} />
-      </div>
-    </div>
-  );
-};
-
-const Stats = ({ logs, categories }) => {
-  const chartData = useMemo(() => {
-    const days = {};
-    // Aggregate reps per day per category
-    logs.forEach(log => {
-      if (!days[log.date]) {
-        days[log.date] = { date: log.date };
-        categories.forEach(c => days[log.date][c.name] = 0);
-      }
-      if (days[log.date][log.category] !== undefined) {
-        days[log.date][log.category] += Number(log.reps);
-      } else {
-        // Fallback if log belongs to a newly added category not yet in array
-        days[log.date][log.category] = (days[log.date][log.category] || 0) + Number(log.reps);
-      }
-    });
-    // Sort chronologically
-    return Object.values(days).sort((a, b) => a.date.localeCompare(b.date));
-  }, [logs]);
-
-  // Colors matching categories
-  const catColors = {
-    'Handles': '#f97316', // orange-500
-    'Shooting': '#3b82f6', // blue-500
-    'Finishing': '#10b981', // emerald-500
-    'Vertical Jumping': '#8b5cf6', // violet-500
-    'Strength Training': '#ef4444' // red-500
-  };
-
-  const getColor = (catName) => {
-    // Generate a consistent pseudo-random color for custom categories
-    if (catColors[catName]) return catColors[catName];
-    let hash = 0;
-    for (let i = 0; i < catName.length; i++) hash = catName.charCodeAt(i) + ((hash << 5) - hash);
-    return `hsl(${hash % 360}, 70%, 50%)`;
-  };
-
-  return (
-    <div className="space-y-5 animate-in fade-in duration-500">
-      <div className="bg-slate-800/80 backdrop-blur-sm rounded-2xl p-5 md:p-6 border border-slate-700/50 shadow-lg">
-        <h2 className="text-xl md:text-2xl font-black italic text-slate-100 mb-5 flex items-center gap-2">
-          <Activity className="text-orange-500" size={24} /> REP PROGRESSION
-        </h2>
-        
-        {chartData.length > 0 ? (
-          <div className="h-[300px] md:h-[400px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={chartData} margin={{ top: 20, right: 10, left: -20, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
-                <XAxis 
-                  dataKey="date" 
-                  stroke="#94a3b8" 
-                  tickFormatter={(val) => {
-                    const d = new Date(val);
-                    return `${d.getMonth() + 1}/${d.getDate()}`;
-                  }} 
-                  tick={{ fontSize: 12 }}
-                />
-                <YAxis stroke="#94a3b8" tick={{ fontSize: 12 }} />
-                <Tooltip 
-                  contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px', color: '#f1f5f9', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }}
-                  itemStyle={{ fontWeight: 'bold' }}
-                  cursor={{ fill: '#334155', opacity: 0.4 }}
-                />
-                <Legend wrapperStyle={{ paddingTop: '20px', fontSize: '12px' }} />
-                {categories.map(cat => (
-                  <Bar key={cat.id} dataKey={cat.name} stackId="a" fill={getColor(cat.name)} radius={[4, 4, 0, 0]} />
-                ))}
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        ) : (
-          <div className="text-center text-slate-500 py-16 flex flex-col items-center justify-center bg-slate-900/30 rounded-xl border border-slate-800 border-dashed">
-            <Dumbbell size={40} className="mb-3 opacity-30" />
-            <p className="font-medium text-sm">No stats available yet. Go log some reps!</p>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-};
-
-const DrillModal = ({ drill, logs, onClose, onLog, onUpdate }) => {
-  const [reps, setReps] = useState(drill.recommendedReps);
-  const [justLogged, setJustLogged] = useState(false);
-  const [videoUrlInput, setVideoUrlInput] = useState(drill.videoUrl || '');
-  const [isEditingVideo, setIsEditingVideo] = useState(!drill.videoUrl);
-
-  const getYouTubeEmbedUrl = (url) => {
-    if (!url) return null;
-    let videoId = null;
-    
-    const match = url.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=|shorts\/))([\w-]{11})/);
-    if (match && match[1]) {
-      videoId = match[1];
-    } else {
-      const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
-      const fallbackMatch = url.match(regExp);
-      if (fallbackMatch && fallbackMatch[2].length === 11) {
-        videoId = fallbackMatch[2];
-      }
-    }
-    
-    if (videoId) {
-      // Use clean embed parameters to avoid Error 153 restriction
-      return `https://www.youtube-nocookie.com/embed/${videoId}?autoplay=0&controls=1&modestbranding=1&playsinline=1`;
-    }
-    
-    return null;
-  };
-
-  const embedUrl = getYouTubeEmbedUrl(drill.videoUrl);
-
-  const drillStats = useMemo(() => {
-    if (!logs) return { sessions: 0, totalReps: 0 };
-    const drillLogs = logs.filter(log => log.drillId === drill.id);
-    return {
-      sessions: drillLogs.length,
-      totalReps: drillLogs.reduce((sum, log) => sum + Number(log.reps), 0)
-    };
-  }, [logs, drill.id]);
-
-  const handleSaveLink = () => {
-    onUpdate(drill, { videoUrl: videoUrlInput });
-    setIsEditingVideo(false);
-  };
-
-  const handleLog = () => {
-    if (reps > 0) {
-      onLog(drill, reps);
-      setJustLogged(true);
-      setTimeout(() => setJustLogged(false), 2000);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-      {/* Backdrop */}
-      <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm" onClick={onClose}></div>
-      
-      {/* Modal */}
-      <div className="relative bg-slate-900 border border-slate-700/80 rounded-2xl w-full max-w-lg shadow-2xl shadow-orange-500/10 overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-300">
-        
-        {/* Header */}
-        <div className="flex justify-between items-center p-4 md:p-5 border-b border-slate-800 bg-slate-800/40">
-          <div>
-            <h2 className="text-xl md:text-2xl font-black text-slate-100 leading-none">{drill.name}</h2>
-            <p className="text-sm text-orange-400 font-bold mt-1">{drill.category}</p>
-          </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 p-2 rounded-full transition-colors">
-            <X size={20} />
-          </button>
-        </div>
-
-        {/* Scrollable Content */}
-        <div className="p-4 md:p-5 overflow-y-auto flex-1 space-y-5 custom-scrollbar">
-          
-          {/* Stats Section */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="bg-slate-800/40 p-3 rounded-xl border border-slate-700/50 flex flex-col items-center justify-center shadow-inner">
-              <span className="text-2xl font-black text-slate-200">{drillStats.sessions}</span>
-              <span className="text-[10px] uppercase tracking-wider text-slate-400 font-bold mt-0.5">Total Sessions</span>
-            </div>
-            <div className="bg-slate-800/40 p-3 rounded-xl border border-slate-700/50 flex flex-col items-center justify-center shadow-inner">
-              <span className="text-2xl font-black text-orange-400">{drillStats.totalReps}</span>
-              <span className="text-[10px] uppercase tracking-wider text-slate-400 font-bold mt-0.5">Total Reps</span>
-            </div>
-          </div>
-
-          {/* Video Section */}
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <h3 className="font-bold text-slate-300 flex items-center gap-2">
-                <Youtube size={18} className="text-red-500" /> Training Video
-              </h3>
-              <div className="flex items-center gap-2">
-                {drill.videoUrl && (
-                  <a 
-                    href={drill.videoUrl} 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    className="text-xs text-blue-400 hover:text-blue-300 font-semibold flex items-center gap-1 bg-slate-800 px-2 py-1 rounded border border-slate-700"
-                  >
-                    Watch on YouTube
-                  </a>
-                )}
-                {!isEditingVideo && (
-                  <button onClick={() => setIsEditingVideo(true)} className="text-xs text-orange-500 hover:text-orange-400 font-semibold flex items-center gap-1">
-                    <Edit2 size={12} /> {drill.videoUrl ? 'Edit Link' : 'Add Video'}
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {isEditingVideo ? (
-              <div className="bg-slate-800/50 p-3 rounded-xl border border-slate-700 flex gap-2">
-                <div className="flex-1 relative">
-                  <LinkIcon size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-                  <input 
-                    type="url" 
-                    placeholder="Paste YouTube Link here..." 
-                    value={videoUrlInput}
-                    onChange={(e) => setVideoUrlInput(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-600 rounded-lg py-2 pl-9 pr-3 text-sm focus:outline-none focus:border-orange-500 text-white"
-                  />
-                </div>
-                <button onClick={handleSaveLink} className="bg-orange-500 hover:bg-orange-400 text-white px-4 py-2 rounded-lg text-sm font-bold transition-colors">
-                  Save
-                </button>
-              </div>
-            ) : embedUrl ? (
-              <div className="relative w-full rounded-xl overflow-hidden bg-slate-950 border border-slate-800 shadow-inner" style={{ paddingBottom: '56.25%' }}>
-                <iframe
-                  className="absolute top-0 left-0 w-full h-full"
-                  src={embedUrl}
-                  title="YouTube video player"
-                  frameBorder="0"
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                  allowFullScreen
-                ></iframe>
-              </div>
-            ) : (
-              <div className="bg-slate-800/30 border border-slate-700/50 border-dashed rounded-xl p-6 text-center">
-                <p className="text-sm text-slate-400 mb-3">No video linked to this drill yet.</p>
-                <button onClick={() => setIsEditingVideo(true)} className="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-lg text-sm font-bold transition-colors inline-flex items-center gap-2">
-                  <Plus size={16} /> Add Video Link
-                </button>
-              </div>
-            )}
-          </div>
-
-          {/* Quick Log Section */}
-          <div className="bg-slate-800/60 p-4 md:p-5 rounded-xl border border-slate-700/80">
-            <h3 className="font-bold text-slate-300 flex items-center gap-2 mb-3">
-              <Activity size={18} className="text-emerald-500" /> Log Session
-            </h3>
-            <p className="text-xs text-slate-400 mb-3">Recommended: {drill.recommendedReps} reps</p>
-            <div className="flex items-center gap-3">
-              <input
-                type="number"
-                min="1"
-                value={reps}
-                onChange={(e) => setReps(parseInt(e.target.value) || 0)}
-                className="flex-1 bg-slate-900 border border-slate-600 text-slate-100 rounded-xl py-3 px-4 focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500 transition-all text-lg font-black text-center"
-              />
-              <button
-                onClick={handleLog}
-                disabled={justLogged}
-                className={`py-3 px-6 rounded-xl font-bold text-sm transition-all duration-300 flex items-center justify-center min-w-[120px] ${
-                  justLogged 
-                    ? 'bg-emerald-500 text-white shadow-[0_0_15px_rgba(16,185,129,0.4)]' 
-                    : 'bg-orange-500 hover:bg-orange-400 text-white shadow-[0_0_15px_rgba(249,115,22,0.4)] hover:shadow-[0_0_20px_rgba(249,115,22,0.6)] active:scale-95'
-                }`}
-              >
-                {justLogged ? <CheckCircle2 size={24} /> : 'LOG REPS'}
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-export default function App() {
-  const [user, setUser] = useState(null);
-  const [logs, setLogs] = useState([]);
-  const [userDrills, setUserDrills] = useState([]);
-  const [userCategories, setUserCategories] = useState([]);
-  const [drillOverrides, setDrillOverrides] = useState({});
-  const [currentView, setCurrentView] = useState('dashboard'); // 'dashboard', 'stats', 'calendar'
-  const [isAuthLoading, setIsAuthLoading] = useState(true);
-  const [selectedDrill, setSelectedDrill] = useState(null);
-
-  // Load Canvas Confetti Script
-  useEffect(() => {
-    if (!document.getElementById('confetti-script')) {
-      const script = document.createElement('script');
-      script.id = 'confetti-script';
-      script.src = 'https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js';
-      document.head.appendChild(script);
-    }
-  }, []);
-
-  // Firebase Auth Setup (RULE 3)
-  useEffect(() => {
-    const initAuth = async () => {
-      try {
-        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-          await signInWithCustomToken(auth, __initial_auth_token);
-        } else {
-          await signInAnonymously(auth);
         }
-      } catch (error) {
-        console.error("Auth error:", error);
-      } finally {
-        setIsAuthLoading(false);
-      }
-    };
+    </script>
     
-    initAuth();
+    <!-- React & ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      setUser(currentUser);
-    });
+    <!-- Babel for in-browser JSX compilation -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     
-    return () => unsubscribe();
-  }, []);
+    <!-- Canvas Confetti for Gamification -->
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
 
-  // Fetch Firestore Data (RULE 1 & 2)
-  useEffect(() => {
-    if (!user) return;
-
-    // RULE 1: Strict Paths used here. RULE 2: No complex queries.
-    const logsRef = collection(db, 'artifacts', appId, 'users', user.uid, 'logs');
-    
-    const unsubLogs = onSnapshot(logsRef, (snapshot) => {
-      const fetchedLogs = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      
-      // Sort in memory to comply with RULE 2
-      fetchedLogs.sort((a, b) => b.timestamp - a.timestamp);
-      setLogs(fetchedLogs);
-    }, (error) => {
-      console.error("Error fetching logs:", error);
-    });
-
-    const drillsRef = collection(db, 'artifacts', appId, 'users', user.uid, 'drills');
-    const unsubDrills = onSnapshot(drillsRef, (snapshot) => {
-      setUserDrills(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    }, (error) => console.error("Error fetching drills:", error));
-
-    const categoriesRef = collection(db, 'artifacts', appId, 'users', user.uid, 'categories');
-    const unsubCategories = onSnapshot(categoriesRef, (snapshot) => {
-      setUserCategories(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    }, (error) => console.error("Error fetching categories:", error));
-
-    const overridesRef = collection(db, 'artifacts', appId, 'users', user.uid, 'drill_overrides');
-    const unsubOverrides = onSnapshot(overridesRef, (snapshot) => {
-      const fetchedOverrides = {};
-      snapshot.docs.forEach(doc => { fetchedOverrides[doc.id] = doc.data(); });
-      setDrillOverrides(fetchedOverrides);
-    }, (error) => console.error("Error fetching overrides:", error));
-
-    return () => { unsubLogs(); unsubDrills(); unsubOverrides(); unsubCategories(); };
-  }, [user]);
-
-  const allCategories = useMemo(() => {
-    const custom = userCategories.map(c => ({ id: c.id, name: c.name, icon: <Star size={20} /> }));
-    return [...DEFAULT_CATEGORIES, ...custom];
-  }, [userCategories]);
-
-  const allDrills = useMemo(() => {
-    const defaultMapped = DEFAULT_DRILLS.map(d => ({
-      ...d,
-      recommendedReps: drillOverrides[d.id]?.recommendedReps !== undefined ? drillOverrides[d.id].recommendedReps : d.recommendedReps,
-      videoUrl: drillOverrides[d.id]?.videoUrl || d.videoUrl || ''
-    }));
-    return [...defaultMapped, ...userDrills];
-  }, [userDrills, drillOverrides]);
-
-  const handleLogDrill = async (drill, actualReps) => {
-    if (!user) return;
-    
-    const today = new Date().toISOString().split('T')[0];
-    
-    try {
-      await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'logs'), {
-        drillId: drill.id,
-        drillName: drill.name,
-        category: drill.category,
-        reps: actualReps,
-        recommendedReps: drill.recommendedReps,
-        date: today,
-        timestamp: Date.now()
-      });
-
-      // Gamification: Trigger confetti!
-      if (window.confetti) {
-        window.confetti({
-          particleCount: 150,
-          spread: 80,
-          origin: { y: 0.6 },
-          colors: ['#f97316', '#fb923c', '#ffffff'],
-          disableForReducedMotion: true
-        });
-      }
-    } catch (error) {
-      console.error("Error saving log:", error);
-    }
-  };
-
-  const handleAddCategory = async (name) => {
-    if (!user) return;
-    try {
-      await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'categories'), {
-        name, timestamp: Date.now()
-      });
-    } catch (error) {
-      console.error("Error adding category:", error);
-    }
-  };
-
-  const handleAddDrill = async (category, name, reps) => {
-    if (!user) return;
-    try {
-      await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'drills'), {
-        category,
-        name,
-        recommendedReps: reps,
-        isCustom: true,
-        timestamp: Date.now()
-      });
-    } catch (error) {
-      console.error("Error adding drill:", error);
-    }
-  };
-
-  const handleUpdateDrillFields = async (drill, fieldsToUpdate) => {
-    if (!user) return;
-    try {
-      if (drill.isCustom) {
-        const dRef = doc(db, 'artifacts', appId, 'users', user.uid, 'drills', drill.id);
-        await updateDoc(dRef, fieldsToUpdate);
-      } else {
-        const overrideRef = doc(db, 'artifacts', appId, 'users', user.uid, 'drill_overrides', drill.id);
-        await setDoc(overrideRef, fieldsToUpdate, { merge: true });
-      }
-      
-      // Update selectedDrill state immediately if it's currently open
-      if (selectedDrill && selectedDrill.id === drill.id) {
-        setSelectedDrill(prev => ({ ...prev, ...fieldsToUpdate }));
-      }
-    } catch (error) {
-      console.error("Error updating drill:", error);
-    }
-  };
-
-  if (isAuthLoading) {
-    return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center text-orange-500">
-        <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-orange-500"></div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 font-sans selection:bg-orange-500/30 flex flex-col">
-      
-      {/* Top Navigation */}
-      <header className="bg-slate-900/80 backdrop-blur-md border-b border-slate-800/80 sticky top-0 z-50 shadow-sm">
-        <div className="max-w-5xl mx-auto px-4 h-14 md:h-16 flex items-center justify-between">
-          <div 
-            className="flex items-center gap-2 transition-transform hover:scale-105 cursor-pointer" 
-            onClick={() => setCurrentView('dashboard')}
-          >
-            <div className="bg-gradient-to-br from-orange-500 to-orange-600 p-1.5 rounded-lg shadow-sm shadow-orange-500/20">
-              <Trophy size={20} className="text-white" />
-            </div>
-            <h1 className="text-lg md:text-xl font-black italic tracking-widest uppercase">
-              Hoop<span className="text-orange-500">Tracker</span>
-            </h1>
-          </div>
-          
-          <nav className="flex gap-1 bg-slate-800/80 p-1 rounded-xl border border-slate-700/50 backdrop-blur-sm">
-            <button 
-              onClick={() => setCurrentView('dashboard')}
-              className={`p-1.5 px-3 md:px-4 rounded-lg flex items-center gap-1.5 text-xs md:text-sm font-bold transition-all duration-300 ${
-                currentView === 'dashboard' ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50'
-              }`}
-            >
-              <LayoutDashboard size={16} /> <span className="hidden md:inline">Dashboard</span>
-            </button>
-            <button 
-              onClick={() => setCurrentView('stats')}
-              className={`p-1.5 px-3 md:px-4 rounded-lg flex items-center gap-1.5 text-xs md:text-sm font-bold transition-all duration-300 ${
-                currentView === 'stats' ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50'
-              }`}
-            >
-              <Activity size={16} /> <span className="hidden md:inline">Stats</span>
-            </button>
-            <button 
-              onClick={() => setCurrentView('calendar')}
-              className={`p-1.5 px-3 md:px-4 rounded-lg flex items-center gap-1.5 text-xs md:text-sm font-bold transition-all duration-300 ${
-                currentView === 'calendar' ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50'
-              }`}
-            >
-              <CalendarIcon size={16} /> <span className="hidden md:inline">Log</span>
-            </button>
-          </nav>
-        </div>
-      </header>
-
-      {/* Main Content Area */}
-      <main className="flex-1 w-full max-w-5xl mx-auto px-4 py-6 md:py-8 pb-24">
-        {currentView === 'dashboard' && (
-          <Dashboard 
-            logs={logs} 
-            allDrills={allDrills}
-            categories={allCategories}
-            onLogDrill={handleLogDrill} 
-            onAddDrill={handleAddDrill}
-            onUpdateDrill={handleUpdateDrillFields}
-            onAddCategory={handleAddCategory}
-            onOpenDrill={(drill) => setSelectedDrill(drill)}
-          />
-        )}
-        {currentView === 'stats' && <Stats logs={logs} categories={allCategories} />}
-        {currentView === 'calendar' && <CalendarView logs={logs} />}
-      </main>
-
-      {selectedDrill && (
-        <DrillModal 
-          drill={selectedDrill} 
-          logs={logs}
-          onClose={() => setSelectedDrill(null)} 
-          onLog={handleLogDrill}
-          onUpdate={handleUpdateDrillFields}
-        />
-      )}
-
-      {/* Global CSS enhancements for scrollbars and inputs */}
-      <style dangerouslySetInnerHTML={{__html: `
+    <style>
+        body { 
+            background-color: #0a0f1d; 
+            color: #f8fafc; 
+            font-family: system-ui, -apple-system, sans-serif; 
+            -webkit-tap-highlight-color: transparent;
+        }
+        /* Hide scrollbars but keep functionality */
         .hide-scrollbar::-webkit-scrollbar { display: none; }
         .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        
+        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+        
+        /* Number input clean up */
         input[type=number]::-webkit-inner-spin-button, 
         input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
         input[type=number] { -moz-appearance: textfield; }
+    </style>
+</head>
+<body class="antialiased selection:bg-brand-orange/30">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useMemo } = React;
+
+        // --- SVGs ---
+        const Trophy = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>;
+        const Dashboard = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>;
+        const Activity = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>;
+        const Calendar = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>;
+        const Flame = () => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"></path></svg>;
+        const Target = () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="6"></circle><circle cx="12" cy="12" r="2"></circle></svg>;
+        const CircleDashed = () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10.1 2.18a9.93 9.93 0 0 1 3.8 0"/><path d="M17.6 4.26a9.95 9.95 0 0 1 2.14 2.14"/><path d="M21.82 10.1a9.93 9.93 0 0 1 0 3.8"/><path d="M19.74 17.6a9.95 9.95 0 0 1-2.14 2.14"/><path d="M13.9 21.82a9.93 9.93 0 0 1-3.8 0"/><path d="M6.4 19.74a9.95 9.95 0 0 1-2.14-2.14"/><path d="M2.18 13.9a9.93 9.93 0 0 1 0-3.8"/><path d="M4.26 6.4A9.95 9.95 0 0 1 6.4 4.26"/></svg>;
+        const ChevronRight = () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>;
+        const Dumbbell = () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m14.5 17.5 3 3M11 11.5l2 2M6.5 13.5l3 3M8 15l2 2M15 8l2 2M4.5 9.5l3 3"/><path d="m12.5 19.5 2 2"/><path d="m20.5 11.5-2-2"/><path d="m9.5 12.5-3-3a1.41 1.41 0 0 0-2 0l-1 1a1.41 1.41 0 0 0 0 2l1.5 1.5 2 2 1.5 1.5a1.41 1.41 0 0 0 2 0l1-1a1.41 1.41 0 0 0 0-2z"/><path d="m17.5 14.5 3 3a1.41 1.41 0 0 0 2 0l1-1a1.41 1.41 0 0 0 0-2l-1.5-1.5-2-2-1.5-1.5a1.41 1.41 0 0 0-2 0l-1 1a1.41 1.41 0 0 0 0 2z"/></svg>;
+        const TrendingUp = () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline><polyline points="17 6 23 6 23 12"></polyline></svg>;
+        const Star = () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>;
+        const Youtube = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22.54 6.42a2.78 2.78 0 0 0-1.94-2C18.88 4 12 4 12 4s-6.88 0-8.6.46a2.78 2.78 0 0 0-1.94 2A29 29 0 0 0 1 11.75a29 29 0 0 0 .46 5.33 2.78 2.78 0 0 0 1.94 2c1.72.46 8.6.46 8.6.46s6.88 0 8.6-.46a2.78 2.78 0 0 0 1.94-2 29 29 0 0 0 .46-5.33 29 29 0 0 0-.46-5.33z"></path><polygon points="9.75 15.02 15.5 11.75 9.75 8.48 9.75 15.02"></polygon></svg>;
+        const Maximize2 = () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 3 21 3 21 9"></polyline><polyline points="9 21 3 21 3 15"></polyline><line x1="21" y1="3" x2="14" y2="10"></line><line x1="3" y1="21" x2="10" y2="14"></line></svg>;
+        const X = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>;
+        const Edit2 = () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg>;
+
+        // --- Data ---
+        const DEFAULT_CATEGORIES = [
+            { name: "Handles", icon: <CircleDashed /> },
+            { name: "Shooting", icon: <Target /> },
+            { name: "Finishing", icon: <ChevronRight /> },
+            { name: "Vertical Jumping", icon: <TrendingUp /> },
+            { name: "Strength Training", icon: <Dumbbell /> }
+        ];
         
-        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #475569; }
-      `}} />
-    </div>
-  );
-}
+        const DEFAULT_DRILLS = [
+            { id: 'h1', category: 'Handles', name: 'Pound Dribbles', recommendedReps: 100, videoUrl: '', history: [] },
+            { id: 'h2', category: 'Handles', name: 'Crossovers', recommendedReps: 50, videoUrl: '', history: [] },
+            { id: 'h3', category: 'Handles', name: 'Between the Legs', recommendedReps: 50, videoUrl: '', history: [] },
+            { id: 'h4', category: 'Handles', name: 'Behind the Back', recommendedReps: 50, videoUrl: '', history: [] },
+            { id: 'h11', category: 'Handles', name: 'Ball Slaps', recommendedReps: 10, videoUrl: '', history: [] },
+            { id: 'h19', category: 'Handles', name: 'Low Fingertip Dribbles', recommendedReps: 20, videoUrl: '', history: [] },
+            { id: 's1', category: 'Shooting', name: 'Form Shooting', recommendedReps: 50, videoUrl: '', history: [] },
+            { id: 's2', category: 'Shooting', name: 'Spot Up Threes', recommendedReps: 100, videoUrl: '', history: [] },
+            { id: 'f1', category: 'Finishing', name: 'Mikan Drill', recommendedReps: 50, videoUrl: '', history: [] }
+        ];
+
+        // --- Helper functions ---
+        const getYouTubeId = (url) => {
+            if (!url) return null;
+            const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+            const match = url.match(regExp);
+            return (match && match[2].length === 11) ? match[2] : null;
+        };
+
+        const fireConfetti = () => {
+            if (window.confetti) {
+                window.confetti({
+                    particleCount: 150,
+                    spread: 80,
+                    origin: { y: 0.6 },
+                    colors: ['#ff6b00', '#ff8533', '#ffffff'],
+                    disableForReducedMotion: true
+                });
+            }
+        };
+
+        function App() {
+            const [categories, setCategories] = useState([]);
+            const [drills, setDrills] = useState([]);
+            const [activeCategory, setActiveCategory] = useState("Handles");
+            const [selectedDrill, setSelectedDrill] = useState(null);
+            const [isLoaded, setIsLoaded] = useState(false);
+            const [currentView, setCurrentView] = useState('dashboard');
+
+            // Inputs for new items
+            const [newTabName, setNewTabName] = useState("");
+            const [isAddingTab, setIsAddingTab] = useState(false);
+
+            // Load Data
+            useEffect(() => {
+                const savedCategories = JSON.parse(localStorage.getItem('hooptracker_categories'));
+                const savedDrills = JSON.parse(localStorage.getItem('hooptracker_drills'));
+                
+                setCategories(savedCategories && savedCategories.length > 0 ? savedCategories : DEFAULT_CATEGORIES.map(c => c.name));
+                setDrills(savedDrills && savedDrills.length > 0 ? savedDrills : DEFAULT_DRILLS);
+                setIsLoaded(true);
+            }, []);
+
+            // Save Data
+            useEffect(() => {
+                if (isLoaded) {
+                    localStorage.setItem('hooptracker_categories', JSON.stringify(categories));
+                    localStorage.setItem('hooptracker_drills', JSON.stringify(drills));
+                }
+            }, [categories, drills, isLoaded]);
+
+            // Add Custom Category
+            const handleAddCategory = (e) => {
+                e.preventDefault();
+                if (newTabName.trim() && !categories.includes(newTabName.trim())) {
+                    setCategories([...categories, newTabName.trim()]);
+                    setActiveCategory(newTabName.trim());
+                    setNewTabName("");
+                    setIsAddingTab(false);
+                }
+            };
+
+            const updateDrill = (updatedDrill) => {
+                setDrills(drills.map(d => d.id === updatedDrill.id ? updatedDrill : d));
+                setSelectedDrill(updatedDrill);
+            };
+
+            const logSession = (drill, repsDone) => {
+                const now = new Date().toISOString();
+                const todayStr = now.split('T')[0];
+                
+                const updatedDrills = drills.map(d => {
+                    if (d.id === drill.id) {
+                        return {
+                            ...d,
+                            history: [...(d.history || []), { date: todayStr, timestamp: Date.now(), reps: parseInt(repsDone) }]
+                        };
+                    }
+                    return d;
+                });
+                
+                setDrills(updatedDrills);
+                
+                if (selectedDrill && selectedDrill.id === drill.id) {
+                    setSelectedDrill(updatedDrills.find(d => d.id === drill.id));
+                }
+                
+                fireConfetti();
+            };
+
+            // Today's Stats
+            const todayStats = useMemo(() => {
+                const today = new Date().toISOString().split('T')[0];
+                let sessions = 0;
+                let totalReps = 0;
+                
+                drills.forEach(drill => {
+                    if(drill.history) {
+                        drill.history.forEach(log => {
+                            if (log.date === today) {
+                                sessions++;
+                                totalReps += log.reps;
+                            }
+                        });
+                    }
+                });
+                
+                return { sessions, totalReps };
+            }, [drills]);
+
+            const getCategoryIcon = (catName) => {
+                const defaultCat = DEFAULT_CATEGORIES.find(c => c.name === catName);
+                return defaultCat ? defaultCat.icon : <Star />;
+            };
+
+            const activeDrills = drills.filter(d => d.category === activeCategory);
+
+            if (!isLoaded) return <div className="min-h-screen bg-brand-bg flex items-center justify-center text-brand-orange animate-pulse">Loading...</div>;
+
+            return (
+                <div className="min-h-screen bg-brand-bg text-slate-100 flex flex-col font-sans pb-20">
+                    
+                    {/* Header Top Bar */}
+                    <header className="px-4 py-4 md:py-6 flex items-center justify-between sticky top-0 bg-brand-bg/95 backdrop-blur z-40 max-w-xl mx-auto w-full">
+                        <div className="flex items-center gap-2 cursor-pointer" onClick={() => setCurrentView('dashboard')}>
+                            <div className="bg-brand-orange p-1.5 rounded-lg text-white">
+                                <Trophy />
+                            </div>
+                            <h1 className="text-xl font-black italic tracking-wider">
+                                HOOP<span className="text-brand-orange">TRACKER</span>
+                            </h1>
+                        </div>
+                        
+                        <div className="flex bg-brand-card rounded-xl p-1 border border-slate-800">
+                            <button onClick={() => setCurrentView('dashboard')} className={`p-2 rounded-lg transition-colors ${currentView === 'dashboard' ? 'bg-slate-700 text-white' : 'text-slate-400 hover:text-white'}`}>
+                                <Dashboard />
+                            </button>
+                            <button onClick={() => setCurrentView('stats')} className={`p-2 rounded-lg transition-colors ${currentView === 'stats' ? 'bg-slate-700 text-white' : 'text-slate-400 hover:text-white'}`}>
+                                <Activity />
+                            </button>
+                            <button onClick={() => setCurrentView('calendar')} className={`p-2 rounded-lg transition-colors ${currentView === 'calendar' ? 'bg-slate-700 text-white' : 'text-slate-400 hover:text-white'}`}>
+                                <Calendar />
+                            </button>
+                        </div>
+                    </header>
+
+                    <main className="flex-1 w-full max-w-xl mx-auto px-4 flex flex-col gap-6">
+                        
+                        {/* Hero Card */}
+                        <div className="bg-gradient-to-br from-brand-orangeGradientStart to-brand-orangeGradientEnd rounded-2xl p-5 md:p-6 text-white relative overflow-hidden shadow-lg shadow-brand-orange/20">
+                            {/* Watermark rings */}
+                            <svg className="absolute top-0 right-0 -mr-10 -mt-10 opacity-15 pointer-events-none" width="200" height="200" viewBox="0 0 100 100">
+                                <circle cx="50" cy="50" r="40" fill="none" stroke="white" strokeWidth="15" />
+                                <circle cx="50" cy="50" r="20" fill="none" stroke="white" strokeWidth="15" />
+                            </svg>
+                            
+                            <div className="relative z-10 flex justify-between items-start mb-6">
+                                <div>
+                                    <h2 className="text-2xl font-black italic tracking-wider mb-1">TODAY'S GRIND</h2>
+                                    <p className="text-orange-100 text-sm font-medium">Keep pushing your limits.</p>
+                                </div>
+                                <div className="text-orange-100 opacity-90"><Flame /></div>
+                            </div>
+                            
+                            <div className="grid grid-cols-2 gap-4 relative z-10">
+                                <div>
+                                    <div className="text-4xl font-black">{todayStats.sessions}</div>
+                                    <div className="text-xs font-bold uppercase tracking-wider text-orange-200 mt-1">Drills Done</div>
+                                </div>
+                                <div>
+                                    <div className="text-4xl font-black">{todayStats.totalReps}</div>
+                                    <div className="text-xs font-bold uppercase tracking-wider text-orange-200 mt-1">Total Reps</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Category Horizontal Scroll */}
+                        <div className="flex overflow-x-auto gap-2 hide-scrollbar py-1 snap-x">
+                            {categories.map(cat => (
+                                <button
+                                    key={cat}
+                                    onClick={() => setActiveCategory(cat)}
+                                    className={`flex items-center gap-2 whitespace-nowrap px-4 py-2.5 rounded-full text-sm font-bold transition-all snap-start ${
+                                        activeCategory === cat 
+                                        ? 'bg-brand-orange text-white' 
+                                        : 'bg-brand-card text-slate-300 hover:bg-slate-800 border border-transparent'
+                                    }`}
+                                >
+                                    {getCategoryIcon(cat)}
+                                    {cat}
+                                </button>
+                            ))}
+                            
+                            {isAddingTab ? (
+                                <form onSubmit={handleAddCategory} className="flex items-center bg-brand-card rounded-full px-2 py-1 snap-start">
+                                    <input 
+                                        autoFocus
+                                        type="text" 
+                                        value={newTabName}
+                                        onChange={e => setNewTabName(e.target.value)}
+                                        placeholder="Tab Name..."
+                                        className="bg-transparent outline-none text-sm text-white w-24 px-2"
+                                    />
+                                    <button type="submit" className="text-brand-orange p-1"><Edit2 /></button>
+                                </form>
+                            ) : (
+                                <button onClick={() => setIsAddingTab(true)} className="flex items-center gap-2 whitespace-nowrap px-4 py-2.5 rounded-full text-sm font-bold bg-brand-card/50 text-slate-400 hover:text-white border border-slate-800 border-dashed snap-start">
+                                    + Add
+                                </button>
+                            )}
+                        </div>
+
+                        {/* Drills List */}
+                        <div className="flex flex-col gap-4">
+                            {activeDrills.map(drill => (
+                                <DrillCard 
+                                    key={drill.id} 
+                                    drill={drill} 
+                                    onLog={logSession} 
+                                    onOpenProfile={() => setSelectedDrill(drill)} 
+                                />
+                            ))}
+                            
+                            {/* Add Drill Button within category */}
+                            <button 
+                                onClick={() => {
+                                    const name = prompt("Enter new drill name:");
+                                    if(name) {
+                                        const newDrill = {
+                                            id: 'custom_' + Date.now(),
+                                            category: activeCategory,
+                                            name,
+                                            recommendedReps: 50,
+                                            videoUrl: '',
+                                            history: []
+                                        };
+                                        setDrills([...drills, newDrill]);
+                                    }
+                                }}
+                                className="bg-brand-card border border-slate-700/50 border-dashed rounded-xl p-5 text-slate-400 font-bold hover:text-brand-orange hover:border-brand-orange/50 transition-colors flex items-center justify-center gap-2 mt-2"
+                            >
+                                <span>+ Add Drill to {activeCategory}</span>
+                            </button>
+                        </div>
+                    </main>
+
+                    {/* Drill Modal */}
+                    {selectedDrill && (
+                        <DrillModal 
+                            drill={selectedDrill}
+                            onClose={() => setSelectedDrill(null)}
+                            onUpdate={updateDrill}
+                            onLog={logSession}
+                        />
+                    )}
+                </div>
+            );
+        }
+
+        // --- Drill Card Component ---
+        function DrillCard({ drill, onLog, onOpenProfile }) {
+            const [reps, setReps] = useState(drill.recommendedReps);
+            const [justLogged, setJustLogged] = useState(false);
+
+            useEffect(() => {
+                setReps(drill.recommendedReps);
+            }, [drill.recommendedReps]);
+
+            const handleLog = () => {
+                if (reps > 0) {
+                    onLog(drill, reps);
+                    setJustLogged(true);
+                    setTimeout(() => setJustLogged(false), 2000);
+                }
+            };
+
+            return (
+                <div className="bg-brand-card rounded-xl p-4 md:p-5 flex flex-col gap-3 group relative border border-transparent hover:border-slate-700 transition-colors">
+                    <div className="flex justify-between items-start">
+                        <div className="cursor-pointer" onClick={onOpenProfile}>
+                            <h3 className="font-bold text-lg text-slate-100 flex items-center gap-2 group-hover:text-brand-orange transition-colors">
+                                {drill.name}
+                                <span className="opacity-0 group-hover:opacity-100 text-brand-orange transition-opacity"><Maximize2 /></span>
+                            </h3>
+                            <p className="text-sm text-slate-400 mt-1">Rec: {drill.recommendedReps} reps</p>
+                        </div>
+                        {drill.videoUrl && <span className="text-red-500/80"><Youtube /></span>}
+                    </div>
+                    
+                    <div className="flex items-center gap-3 mt-1">
+                        <input
+                            type="number"
+                            value={reps}
+                            onChange={(e) => setReps(parseInt(e.target.value) || 0)}
+                            className="flex-1 bg-brand-input rounded-lg py-3 px-4 text-center font-bold text-slate-100 focus:outline-none focus:ring-1 focus:ring-brand-orange"
+                        />
+                        <button
+                            onClick={handleLog}
+                            disabled={justLogged}
+                            className={`px-6 py-3 rounded-lg font-bold text-sm min-w-[90px] transition-all ${
+                                justLogged 
+                                ? 'bg-emerald-500 text-white' 
+                                : 'bg-brand-orange hover:bg-brand-orangeDark text-white'
+                            }`}
+                        >
+                            {justLogged ? 'DONE' : 'LOG'}
+                        </button>
+                    </div>
+                </div>
+            );
+        }
+
+        // --- Drill Profile Modal ---
+        function DrillModal({ drill, onClose, onUpdate, onLog }) {
+            const [videoUrl, setVideoUrl] = useState(drill.videoUrl || '');
+            const [isEditingVideo, setIsEditingVideo] = useState(!drill.videoUrl);
+            const [reps, setReps] = useState(drill.recommendedReps);
+            const [isEditingReps, setIsEditingReps] = useState(false);
+            const [editRepsVal, setEditRepsVal] = useState(drill.recommendedReps);
+
+            const videoId = getYouTubeId(drill.videoUrl);
+            const totalReps = drill.history ? drill.history.reduce((sum, h) => sum + h.reps, 0) : 0;
+            const sessions = drill.history ? drill.history.length : 0;
+
+            const handleSaveVideo = () => {
+                onUpdate({ ...drill, videoUrl });
+                setIsEditingVideo(false);
+            };
+
+            const handleSaveReps = () => {
+                onUpdate({ ...drill, recommendedReps: editRepsVal });
+                setIsEditingReps(false);
+                setReps(editRepsVal);
+            };
+
+            return (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+                    <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose}></div>
+                    
+                    <div className="relative bg-brand-card w-full max-w-md rounded-2xl flex flex-col max-h-[90vh] overflow-hidden border border-slate-700">
+                        {/* Header */}
+                        <div className="flex justify-between items-center p-5 border-b border-slate-800">
+                            <div>
+                                <h2 className="text-xl font-bold text-white leading-tight">{drill.name}</h2>
+                                <p className="text-brand-orange text-sm font-bold mt-0.5">{drill.category}</p>
+                            </div>
+                            <button onClick={onClose} className="p-2 bg-brand-bg rounded-full text-slate-400 hover:text-white transition-colors">
+                                <X />
+                            </button>
+                        </div>
+
+                        {/* Content */}
+                        <div className="p-5 overflow-y-auto custom-scrollbar flex-col gap-6 flex">
+                            
+                            {/* Stats Blocks */}
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="bg-brand-bg rounded-xl p-4 flex flex-col items-center justify-center border border-slate-800">
+                                    <span className="text-3xl font-black text-slate-200">{sessions}</span>
+                                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mt-1">Sessions</span>
+                                </div>
+                                <div className="bg-brand-bg rounded-xl p-4 flex flex-col items-center justify-center border border-slate-800">
+                                    <span className="text-3xl font-black text-brand-orange">{totalReps}</span>
+                                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mt-1">Total Reps</span>
+                                </div>
+                            </div>
+
+                            {/* Training Video */}
+                            <div className="flex flex-col gap-3">
+                                <div className="flex justify-between items-center">
+                                    <h3 className="font-bold flex items-center gap-2 text-slate-200">
+                                        <span className="text-red-500"><Youtube /></span> Training Video
+                                    </h3>
+                                    {!isEditingVideo && (
+                                        <button onClick={() => setIsEditingVideo(true)} className="text-brand-orange text-xs font-bold flex items-center gap-1">
+                                            <Edit2 /> Edit Link
+                                        </button>
+                                    )}
+                                </div>
+
+                                {isEditingVideo ? (
+                                    <div className="flex gap-2">
+                                        <input 
+                                            type="text" 
+                                            placeholder="Paste YouTube URL..." 
+                                            value={videoUrl}
+                                            onChange={e => setVideoUrl(e.target.value)}
+                                            className="flex-1 bg-brand-bg border border-slate-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-orange text-white"
+                                        />
+                                        <button onClick={handleSaveVideo} className="bg-brand-orange text-white px-4 py-2 rounded-lg text-sm font-bold">Save</button>
+                                    </div>
+                                ) : videoId ? (
+                                    <div className="relative pt-[56.25%] rounded-xl overflow-hidden border border-slate-800 bg-black">
+                                        <iframe
+                                            className="absolute inset-0 w-full h-full"
+                                            src={`https://www.youtube.com/embed/${videoId}?rel=0`}
+                                            title="YouTube video player"
+                                            frameBorder="0"
+                                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                            allowFullScreen
+                                        ></iframe>
+                                    </div>
+                                ) : (
+                                    <div className="bg-brand-bg/50 border border-slate-800 border-dashed rounded-xl p-6 text-center">
+                                        <p className="text-sm text-slate-500 mb-2">No video linked to this drill.</p>
+                                        <button onClick={() => setIsEditingVideo(true)} className="text-brand-orange text-sm font-bold">+ Add Video</button>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Log Session */}
+                            <div className="bg-brand-bg rounded-xl p-5 border border-slate-800 mt-2">
+                                <div className="flex justify-between items-center mb-4">
+                                    <h3 className="font-bold flex items-center gap-2 text-slate-200">
+                                        <span className="text-emerald-500"><Activity /></span> Log Session
+                                    </h3>
+                                    {isEditingReps ? (
+                                        <div className="flex items-center gap-1">
+                                            <input 
+                                                type="number" 
+                                                value={editRepsVal}
+                                                onChange={e => setEditRepsVal(parseInt(e.target.value) || 0)}
+                                                className="w-16 bg-brand-input border border-slate-600 rounded px-2 py-1 text-sm text-white"
+                                            />
+                                            <button onClick={handleSaveReps} className="text-brand-orange text-sm font-bold">Save</button>
+                                        </div>
+                                    ) : (
+                                        <button onClick={() => setIsEditingReps(true)} className="text-slate-400 text-xs font-medium hover:text-slate-200 flex items-center gap-1">
+                                            Rec: {drill.recommendedReps} reps <Edit2 />
+                                        </button>
+                                    )}
+                                </div>
+
+                                <div className="flex items-center gap-3">
+                                    <input
+                                        type="number"
+                                        value={reps}
+                                        onChange={(e) => setReps(parseInt(e.target.value) || 0)}
+                                        className="flex-1 bg-brand-input rounded-xl py-3 px-4 text-center text-lg font-black text-slate-100 focus:outline-none focus:ring-1 focus:ring-brand-orange border border-slate-700"
+                                    />
+                                    <button
+                                        onClick={() => {
+                                            if (reps > 0) onLog(drill, reps);
+                                        }}
+                                        className="px-8 py-3 rounded-xl font-bold bg-brand-orange hover:bg-brand-orangeDark text-white transition-colors"
+                                    >
+                                        LOG
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
 ```
